@@ -24,6 +24,49 @@ import WatchSignalPlatform
 }
 
 @MainActor func registerAutomaticLockTests(_ suite: TestSuite) {
+ suite.test("Sleep.testDirectSystemSleepNeedsNoEventPermissionAndUsesSleepnow") {
+  var commands: [String]=[];var completed=false
+  let sleeper=SystemSleeper(run:{ url,args,completion in
+   commands=[url.path]+args;completion(.success(()))
+  })
+  sleeper.onSleepResult={ if case .success = $0 { completed=true } }
+  try check(sleeper.isAuthorized)
+  try sleeper.lock()
+  try check(commands == ["/usr/bin/pmset","sleepnow"] && completed)
+ }
+ suite.test("Sleep.testLaunchFailureThrowsAndCommandFailureIsReported") {
+  let unavailable=SystemSleeper(run:{ _,_,_ in throw TestFailure(message:"launch failed") })
+  try expectThrow { try unavailable.lock() }
+  var failed=false
+  let sleeper=SystemSleeper(run:{ _,_,completion in completion(.failure(TestFailure(message:"sleep rejected"))) })
+  sleeper.onSleepResult={ if case .failure = $0 { failed=true } }
+  try sleeper.lock();try check(failed)
+ }
+ suite.test("Sleep.testActualProcessRunnerReportsExitWithoutSleepingTestMachine") {
+  var outcomes: [Bool]=[]
+  for command in ["/usr/bin/true","/usr/bin/false"] {
+   try SystemSleeper.runCommand(URL(fileURLWithPath:command),[]) { outcome in
+    switch outcome { case .success: outcomes.append(true);case .failure: outcomes.append(false) }
+   }
+   for _ in 0..<100 where outcomes.count < (command.hasSuffix("true") ? 1 : 2) {
+    try await Task.sleep(for:.milliseconds(10))
+   }
+  }
+  try check(outcomes == [true,false])
+ }
+ suite.test("Sleep.testModelLogsFailureDisablesAndRetainsCalibrationAcrossWake") {
+  let (model,scanner)=try lockingFixture(RecordingLocker())
+  let saved=model.calibration
+  model.setAutomaticLock(true)
+  model.recordSystemSleep(.failure(SystemSleepError.commandFailed(1)))
+  try check(!model.automaticLockEnabled && model.errorMessage != nil)
+  try check(model.exportCSV().contains("systemSleepRequest,systemSleep") && model.lockAttempts.last?.result == .failed)
+  model.handleSleep();model.handleWake()
+  try check(model.calibration == saved && model.snapshot.state == .warmingUp)
+  model.setAutomaticLock(true)
+  for i in 0..<5 { scanner.send(sample(Double(i),-45)) }
+  try check(model.snapshot.state == .present)
+ }
  suite.test("Lock.testSystemSequenceLocksImmediatelyThenSleepsDisplay") {
   var steps: [String]=[];var result: LockResult?
   let locker=SystemScreenLocker(authorized:{true},postShortcut:{steps.append("lock")},sleepDisplay:{steps.append("sleep")})

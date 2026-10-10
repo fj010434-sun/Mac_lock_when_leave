@@ -40,7 +40,8 @@ public final class SessionLog {
    } else if let e=row.event {
     columns=[format.string(from:e.timestamp),deviceID.uuidString,"","","departure",e.reason.rawValue]
    } else if let attempt=row.lockAttempt {
-    columns=[format.string(from:attempt.timestamp),deviceID.uuidString,"","",attempt.trigger == .displaySleep ? "displaySleepRequest" : "lockRequest",attempt.trigger.rawValue]
+    let kind=attempt.trigger == .systemSleep ? "systemSleepRequest" : (attempt.trigger == .displaySleep ? "displaySleepRequest" : "lockRequest")
+    columns=[format.string(from:attempt.timestamp),deviceID.uuidString,"","",kind,attempt.trigger.rawValue]
    } else if let date=row.configurationTime {
     columns=[format.string(from:date),deviceID.uuidString,"","","configuration","calibrationChanged"]
    } else { continue }

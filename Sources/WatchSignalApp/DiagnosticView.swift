@@ -74,7 +74,7 @@ struct DiagnosticView: View {
    HStack(alignment:.top) {
     VStack(alignment:.leading,spacing:6) {
      Text("手表离开锁屏").font(.system(size:28,weight:.semibold))
-     Text("只跟踪你的手表，判定离开后立即锁屏").foregroundStyle(.secondary)
+     Text("只跟踪你的手表，判定离开后立即休眠").foregroundStyle(.secondary)
     }
     Spacer()
     Button(model.requestedScanning ? "暂停扫描" : "开始扫描") {
@@ -83,7 +83,7 @@ struct DiagnosticView: View {
    }
    HStack(spacing:7) {
     Image(systemName:model.automaticLockEnabled ? "lock.shield" : "waveform.path")
-    Text(model.automaticLockEnabled ? "自动锁屏已开启" : "自动锁屏已关闭 · 仅采集信号")
+    Text(model.automaticLockEnabled ? "自动休眠已开启" : "自动休眠已关闭 · 仅采集信号")
     Spacer()
     Circle().fill(model.isRunning ? Color.green : Color.gray).frame(width:7,height:7)
     Text(scannerLabel)
@@ -94,31 +94,30 @@ struct DiagnosticView: View {
   card {
    VStack(alignment:.leading,spacing:12) {
     HStack {
-     Toggle("自动锁屏",isOn:Binding(get:{model.automaticLockEnabled},set:{model.setAutomaticLock($0)})).toggleStyle(.switch)
+     Toggle("自动休眠",isOn:Binding(get:{model.automaticLockEnabled},set:{model.setAutomaticLock($0)})).toggleStyle(.switch)
       .disabled(!model.automaticLockEnabled && (!model.isRunning || model.calibration == nil || model.calibrationPhase != nil))
      Spacer()
-     Text(model.lockAuthorized ? "锁屏权限已授权" : "需要辅助功能权限").font(.caption).foregroundStyle(model.lockAuthorized ? .green : .orange)
+     Text(model.lockAuthorized ? "系统休眠可用" : "系统休眠不可用").font(.caption).foregroundStyle(model.lockAuthorized ? .green : .orange)
     }
     Text(protectionLabel).font(.callout).fixedSize(horizontal:false,vertical:true)
     HStack {
-     Button("授权锁屏权限") { model.requestLockAuthorization() }
-     Button("立即锁屏（测试）") { model.lockNow() }.disabled(!model.lockAuthorized)
+     Button("立即休眠（测试）") { model.lockNow() }.disabled(!model.lockAuthorized)
     }.buttonStyle(.bordered)
-    Text("判定离开后立即锁屏，随后关闭显示器。回来唤醒屏幕，由 macOS 尝试 Apple Watch 解锁。同一次离开只请求一次。")
+    Text("判定离开后立即让 Mac 系统休眠。回来按键或点触控板唤醒，由 macOS 尝试 Apple Watch 解锁。同一次离开只请求一次。")
      .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
    }
   }
  }
  private var protectionLabel: String {
-  if model.calibrationPhase != nil { return "正在校准，自动锁屏暂时不生效。" }
-  if model.calibration == nil { return "完成下面的两步校准，再开启自动锁屏。" }
-  if !model.automaticLockEnabled { return "校准已保存。开启自动锁屏后，请回到工位等待显示“在工位附近”。" }
-  if !model.isRunning { return "采集已暂停，自动锁屏暂时不生效。" }
+  if model.calibrationPhase != nil { return "正在校准，自动休眠暂时不生效。" }
+  if model.calibration == nil { return "完成下面的两步校准，再开启自动休眠。" }
+  if !model.automaticLockEnabled { return "校准已保存。开启自动休眠后，请回到工位等待显示“在工位附近”。" }
+  if !model.isRunning { return "采集已暂停，自动休眠暂时不生效。" }
   switch model.snapshot.state {
   case .warmingUp: return "请回到工位，等待显示“在工位附近”；当前尚未建立在场起点。"
-  case .present,.returned: return "检测已生效。带着手表离开工位可触发锁屏。"
-  case .pendingAway: return "信号变弱，正在确认离开；确认后立即锁屏。"
-  case .awayWeak,.awayMissing: return "已判定离开，锁屏请求结果见下方事件记录。"
+  case .present,.returned: return "检测已生效。带着手表离开工位可触发系统休眠。"
+  case .pendingAway: return "信号变弱，正在确认离开；确认后立即休眠。"
+  case .awayWeak,.awayMissing: return "已判定离开，休眠请求结果见下方事件记录。"
   case .stale: return "目标信号过期，等待新信号或失联判定。"
   case .pendingReturn: return "信号恢复，正在确认返回工位。"
   case .uncalibrated: return "等待有效校准。"
@@ -206,19 +205,19 @@ struct DiagnosticView: View {
   card {
    VStack(alignment:.leading,spacing:12) {
     HStack {
-     Text("锁屏记录").font(.headline);Spacer()
+     Text("休眠记录").font(.headline);Spacer()
      Button("导出采集 CSV",systemImage:"square.and.arrow.up") { export() }.disabled(model.selectedID == nil)
     }
-    if model.lockAttempts.isEmpty { Text("尚无锁屏请求。完成校准、开启自动锁屏并建立在场状态后，再测试离开。").font(.callout).foregroundStyle(.secondary) }
+    if model.lockAttempts.isEmpty { Text("尚无休眠请求。完成校准、开启自动休眠并建立在场状态后，再测试离开。").font(.callout).foregroundStyle(.secondary) }
     ForEach(model.lockAttempts.suffix(8).reversed()) { attempt in
      HStack {
       Image(systemName:attempt.result == .requested ? "lock.fill" : "exclamationmark.triangle.fill").foregroundStyle(.orange)
-      Text(attempt.result == .requested ? (attempt.trigger == .displaySleep ? "已发送关闭显示器请求" : "已发送锁屏请求：\(triggerLabel(attempt.trigger))") : "\(attempt.trigger == .displaySleep ? "熄屏" : "锁屏")失败：\(attempt.detail)")
+      Text(attempt.result == .requested ? (attempt.trigger == .systemSleep ? "系统休眠命令已完成" : (attempt.trigger == .displaySleep ? "已发送关闭显示器请求" : "已发送休眠请求：\(triggerLabel(attempt.trigger))")) : "\(attempt.trigger == .displaySleep ? "熄屏" : "休眠")失败：\(attempt.detail)")
       Spacer();Text(attempt.timestamp,style:.time).monospacedDigit().foregroundStyle(.secondary)
      }.font(.caption)
     }
     if !model.automaticLockEnabled && !model.events.isEmpty {
-     Text("累计离开判定 \(model.events.count) 次；自动锁屏关闭期间的判定不会补执行。")
+     Text("累计离开判定 \(model.events.count) 次；自动休眠关闭期间的判定不会补执行。")
       .font(.caption).foregroundStyle(.secondary)
     }
     if model.droppedLogCount > 0 { Text("日志容量已满，较早的 \(model.droppedLogCount) 条记录已截断。").font(.caption).foregroundStyle(.orange) }
@@ -226,7 +225,7 @@ struct DiagnosticView: View {
   }
  }
  private func triggerLabel(_ trigger: LockTrigger) -> String {
-  switch trigger { case .manual: "手动测试";case .weakSignal: "信号持续弱";case .missingSignal: "信号丢失";case .displaySleep: "关闭显示器" }
+  switch trigger { case .manual: "手动测试";case .weakSignal: "信号持续弱";case .missingSignal: "信号丢失";case .displaySleep: "关闭显示器";case .systemSleep: "系统休眠" }
  }
  private func card<Content:View>(@ViewBuilder _ content: () -> Content) -> some View {
   content().frame(maxWidth:.infinity,alignment:.leading).padding(18)

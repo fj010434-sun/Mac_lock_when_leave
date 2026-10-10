@@ -2,10 +2,10 @@ import AppKit
 import SwiftUI
 import WatchSignalPlatform
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
- private let locker=SystemScreenLocker()
+ private let locker=SystemSleeper()
  lazy var model: DiagnosticModel = {
   let model=DiagnosticModel(scanner:BluetoothScanner(),store:SelectionStore(),locker:locker)
-  locker.onDisplaySleepResult={ [weak model] result in model?.recordDisplaySleep(result) }
+  locker.onSleepResult={ [weak model] result in model?.recordSystemSleep(result) }
   return model
  }()
  private var timer: Timer?
@@ -39,9 +39,9 @@ import WatchSignalPlatform
     if delegate.model.requestedScanning { delegate.model.pause() } else { delegate.model.start() }
    }
    Divider()
-   Text(delegate.model.automaticLockEnabled ? "自动锁屏已开启" : "自动锁屏已关闭")
-   if delegate.model.automaticLockEnabled { Button("关闭自动锁屏") { delegate.model.setAutomaticLock(false) } }
-   Button("立即锁屏") { delegate.model.lockNow() }
+   Text(delegate.model.automaticLockEnabled ? "自动休眠已开启" : "自动休眠已关闭")
+   if delegate.model.automaticLockEnabled { Button("关闭自动休眠") { delegate.model.setAutomaticLock(false) } }
+   Button("立即休眠") { delegate.model.lockNow() }
    Button("退出") { NSApp.terminate(nil) }
   }
  }

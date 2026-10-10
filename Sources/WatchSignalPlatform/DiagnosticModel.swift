@@ -47,7 +47,7 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
   refreshLockAuthorization()
   if enabled {
    guard isRunning, selectedID != nil, calibration?.isValid == true, calibrationPhase == nil else {
-    errorMessage="请先开始扫描并完成两步校准，再启用自动锁屏。";return
+    errorMessage="请先开始扫描并完成两步校准，再启用自动休眠。";return
    }
    guard lockAuthorized else { errorMessage=ScreenLockError.permissionDenied.localizedDescription;return }
   }
@@ -58,6 +58,17 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
  }
  public func requestLockAuthorization() { locker?.requestAuthorization();refreshLockAuthorization() }
  public func lockNow() { requestLock(trigger:.manual,at:now()) }
+ public func recordSystemSleep(_ result: Result<Void, Error>) {
+  let attempt: LockAttempt
+  switch result {
+  case .success: attempt=LockAttempt(timestamp:now(),trigger:.systemSleep,result:.requested)
+  case .failure(let error):
+   attempt=LockAttempt(timestamp:now(),trigger:.systemSleep,result:.failed,detail:error.localizedDescription)
+   errorMessage="系统休眠失败：\(error.localizedDescription)";automaticLockEnabled=false
+  }
+  lockAttempts.append(attempt);log.append(lockAttempt:attempt)
+  if lockAttempts.count > 500 { lockAttempts.removeFirst(lockAttempts.count-500) }
+ }
  public func recordDisplaySleep(_ result: Result<Void, Error>) {
   let attempt: LockAttempt
   switch result {
@@ -81,10 +92,10 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
    guard let locker else { throw ScreenLockError.unavailable }
    guard locker.isAuthorized else { throw ScreenLockError.permissionDenied }
    try locker.lock()
-   attempt=LockAttempt(timestamp:at,trigger:trigger,result:.requested)
+   attempt=LockAttempt(timestamp:at,trigger:trigger,result:.requested,detail:locker is SystemSleeper ? "systemSleep: command launched" : "")
   } catch {
    attempt=LockAttempt(timestamp:at,trigger:trigger,result:.failed,detail:error.localizedDescription)
-   errorMessage="锁屏请求失败：\(error.localizedDescription)";automaticLockEnabled=false
+   errorMessage="休眠请求失败：\(error.localizedDescription)";automaticLockEnabled=false
   }
   lockAttempts.append(attempt);log.append(lockAttempt:attempt)
   if lockAttempts.count > 500 { lockAttempts.removeFirst(lockAttempts.count-500) }

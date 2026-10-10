@@ -1,6 +1,6 @@
 import Foundation
 
-public enum LockTrigger: String, Sendable { case weakSignal, missingSignal, manual, displaySleep }
+public enum LockTrigger: String, Sendable { case weakSignal, missingSignal, manual, displaySleep, systemSleep }
 public enum LockResult: String, Sendable { case requested, failed }
 public struct LockAttempt: Identifiable, Sendable {
  public let id = UUID()
