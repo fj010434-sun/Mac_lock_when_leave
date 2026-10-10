@@ -16,7 +16,7 @@ func expectThrow(_ body: () throws -> Void) throws {
 @main struct Runner {
  @MainActor static func main() {
   let suite = TestSuite()
-  registerCalibrationTests(suite); registerPresenceTests(suite); registerLogTests(suite)
+  registerCalibrationTests(suite); registerPresenceTests(suite); registerLogTests(suite); registerPlatformTests(suite)
   let filter = CommandLine.arguments.dropFirst().first
   var failures = 0, count = 0
   for (name, run) in suite.cases where filter == nil || name.contains(filter!) {
