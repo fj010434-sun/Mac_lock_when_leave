@@ -31,6 +31,7 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
    selectedID=saved.deviceID;selectedName=saved.name;calibration=saved.calibration
    detector=PresenceDetector(deviceID:saved.deviceID,calibration:saved.calibration)
    collector=CalibrationCollector(deviceID:saved.deviceID);snapshot=detector!.snapshot
+   log.setCalibration(saved.calibration,at:now())
   }
   errorMessage=store.loadError
   scanner.onSample={ [weak self] s,n in self?.receive(s,name:n) }
@@ -40,7 +41,7 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
   selectedID=deviceID;selectedName=name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? "我的手表" : name
   calibration=nil;detector=PresenceDetector(deviceID:deviceID,calibration:nil)
   collector=CalibrationCollector(deviceID:deviceID); chartSamples=[];events=[];log=SessionLog();eventCursor=0
-  cancelCalibration();snapshot=detector!.snapshot;persist()
+  cancelCalibration();snapshot=detector!.snapshot;log.setCalibration(nil,at:now());persist()
  }
  public func start() {
   requestedScanning=true;resetTransient();isRunning=availability == .ready && !sleeping
@@ -88,7 +89,7 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
     let finishing=calibrationPhase;calibrationPhase=nil;calibrationStarted=nil
     do {
      if let result=try collector?.finish(at:at) {
-      calibration=result;nearReady=false;detector?.setCalibration(result);eventCursor=0;persist()
+      calibration=result;nearReady=false;detector?.setCalibration(result);eventCursor=0;log.setCalibration(result,at:at);persist()
      } else { nearReady=finishing == .near }
     } catch { errorMessage=error.localizedDescription;nearReady=false }
    }
@@ -99,13 +100,15 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
   guard isRunning, selectedID != nil else { errorMessage="请先开始扫描并确认目标设备。";return }
   guard calibrationPhase == nil else { return }
   if phase == .far && !nearReady { errorMessage="请先完成工位采样。";return }
+  errorMessage=nil
   if phase == .near {
    calibration=nil;nearReady=false
+   log.setCalibration(nil,at:now())
    if let selectedID { collector=CalibrationCollector(deviceID:selectedID) }
    persist()
   }
   detector?.setCalibration(nil);eventCursor=0;snapshot=detector?.snapshot ?? PresenceSnapshot(state:.uncalibrated)
-  chartSamples=[];errorMessage=nil;calibrationPhase=phase;calibrationStarted=now();calibrationProgress=0;calibrationSampleCount=0
+  chartSamples=[];calibrationPhase=phase;calibrationStarted=now();calibrationProgress=0;calibrationSampleCount=0
   collector?.start(phase:phase,at:calibrationStarted!)
  }
  private func collectEvents() {

@@ -22,6 +22,28 @@ import WatchSignalPlatform
  return restored
 }
 @MainActor func registerPlatformTests(_ suite: TestSuite) {
+ suite.test("Platform.testRecalibrationRetainsPersistenceFailure") {
+  let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+  let url=root.appendingPathComponent("selection.json")
+  defer { try? FileManager.default.removeItem(at:root) }
+  let store=SelectionStore(url:url);try store.save(SavedSelection(deviceID:targetID,name:"A",calibration:calibration()))
+  let scanner=FakeScanner(), m=DiagnosticModel(scanner:scanner,store:store,now:{time(0)})
+  m.start();try FileManager.default.removeItem(at:url);try FileManager.default.createDirectory(at:url,withIntermediateDirectories:true)
+  m.beginCalibration(.near)
+  try check(m.errorMessage != nil, "save failure must remain visible during recalibration")
+ }
+ suite.test("Platform.testRecalibrationCSVKeepsOldThresholds") {
+  let (original,s,store)=fixture();let m=try seed(original,s,store)
+  m.beginCalibration(.near);m.advance(at:time(20)) // fails for insufficient samples
+  let csv=m.exportCSV(), lines=csv.split(separator:"\n").map(String.init)
+  let header=lines.first { $0.hasPrefix("timestamp,") }!.split(separator:",").map(String.init)
+  guard let version=header.firstIndex(of:"calibration_version"),let threshold=header.firstIndex(of:"away_threshold") else { throw TestFailure(message:"rows must carry calibration version and threshold") }
+  let old=lines.first { $0.contains(",present,") }!.split(separator:",",omittingEmptySubsequences:false).map(String.init)
+  try check(old[threshold] == "-55.0" && old[version] == "1", "old rows keep original thresholds after failed recalibration")
+  let boundary=lines.last { $0.contains(",configuration,") }!.split(separator:",",omittingEmptySubsequences:false).map(String.init)
+  try check(boundary[threshold].isEmpty && boundary[version] == "2", "clear calibration boundary must be logged")
+ }
+
  suite.test("Platform.testOtherDeviceCannotReplaceSelection") {
   let (m,s,_) = fixture(); s.send(sample(0,-45)); s.send(sample(1,-90,otherID))
   try check(m.selectedID == targetID && m.chartSamples.count == 1 && m.snapshot.lastSample == time(0))

@@ -1,7 +1,7 @@
 # 指定 Apple Watch RSSI 诊断工具
 
 日期：2026-10-10
-状态：用户已于 2026-10-10 确认设计；尚未实施，也未验证实机蓝牙表现。
+状态：用户已于 2026-10-10 确认设计；诊断版已实现并读到候选手表信号；完整实机验收尚未完成。
 
 ## 目标与阶段边界
 
@@ -78,3 +78,7 @@
 - [Apple：发现设备与 RSSI 回调](https://developer.apple.com/documentation/corebluetooth/cbcentralmanagerdelegate/centralmanager(_:diddiscover:advertisementdata:rssi:))
 - [Apple：重复扫描事件](https://developer.apple.com/documentation/corebluetooth/cbcentralmanagerscanoptionallowduplicateskey)
 - [BLEUnlock 原作者项目](https://github.com/ts1/BLEUnlock)：提供现有路线参考，不作为本机兼容性或设备身份稳定性的验证。
+
+## 实施环境调整
+
+本机 CLT 缺少 XCTest，自动测试改为独立 Swift 可执行程序 `DiagnosticsTests`，覆盖原计划的行为契约。使用 native 构建系统，Swift 6.4 会发出弃用警告；使用 ViewState 类型别名避免 CLT 缺少 SDK 27 的 State 宏插件。生命周期通知在 AppDelegate 中处理，再调用模型的重置接口。以上不改变诊断版的设备隔离和模拟锁屏边界。
