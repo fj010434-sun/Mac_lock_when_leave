@@ -104,7 +104,7 @@ struct DiagnosticView: View {
      Button("授权锁屏权限") { model.requestLockAuthorization() }
      Button("立即锁屏（测试）") { model.lockNow() }.disabled(!model.lockAuthorized)
     }.buttonStyle(.bordered)
-    Text("离开判定成立后直接发送系统锁屏快捷键。同一次离开只请求一次；返回不会自动解锁。")
+    Text("判定离开后立即锁屏，随后关闭显示器。回来唤醒屏幕，由 macOS 尝试 Apple Watch 解锁。同一次离开只请求一次。")
      .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
    }
   }
@@ -213,7 +213,7 @@ struct DiagnosticView: View {
     ForEach(model.lockAttempts.suffix(8).reversed()) { attempt in
      HStack {
       Image(systemName:attempt.result == .requested ? "lock.fill" : "exclamationmark.triangle.fill").foregroundStyle(.orange)
-      Text(attempt.result == .requested ? "已发送锁屏请求：\(triggerLabel(attempt.trigger))" : "锁屏失败：\(attempt.detail)")
+      Text(attempt.result == .requested ? (attempt.trigger == .displaySleep ? "已发送关闭显示器请求" : "已发送锁屏请求：\(triggerLabel(attempt.trigger))") : "\(attempt.trigger == .displaySleep ? "熄屏" : "锁屏")失败：\(attempt.detail)")
       Spacer();Text(attempt.timestamp,style:.time).monospacedDigit().foregroundStyle(.secondary)
      }.font(.caption)
     }
@@ -226,7 +226,7 @@ struct DiagnosticView: View {
   }
  }
  private func triggerLabel(_ trigger: LockTrigger) -> String {
-  switch trigger { case .manual: "手动测试";case .weakSignal: "信号持续弱";case .missingSignal: "信号丢失" }
+  switch trigger { case .manual: "手动测试";case .weakSignal: "信号持续弱";case .missingSignal: "信号丢失";case .displaySleep: "关闭显示器" }
  }
  private func card<Content:View>(@ViewBuilder _ content: () -> Content) -> some View {
   content().frame(maxWidth:.infinity,alignment:.leading).padding(18)

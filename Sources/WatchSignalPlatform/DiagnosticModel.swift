@@ -58,6 +58,17 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
  }
  public func requestLockAuthorization() { locker?.requestAuthorization();refreshLockAuthorization() }
  public func lockNow() { requestLock(trigger:.manual,at:now()) }
+ public func recordDisplaySleep(_ result: Result<Void, Error>) {
+  let attempt: LockAttempt
+  switch result {
+  case .success: attempt=LockAttempt(timestamp:now(),trigger:.displaySleep,result:.requested)
+  case .failure(let error):
+   attempt=LockAttempt(timestamp:now(),trigger:.displaySleep,result:.failed,detail:error.localizedDescription)
+   errorMessage="锁屏快捷键已发送，但关闭显示器失败：\(error.localizedDescription)"
+  }
+  lockAttempts.append(attempt);log.append(lockAttempt:attempt)
+  if lockAttempts.count > 500 { lockAttempts.removeFirst(lockAttempts.count-500) }
+ }
  private func refreshLockAuthorization() {
   lockAuthorized=locker?.isAuthorized ?? false
   if automaticLockEnabled && !lockAuthorized {

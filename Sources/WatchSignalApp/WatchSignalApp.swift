@@ -2,7 +2,12 @@ import AppKit
 import SwiftUI
 import WatchSignalPlatform
 @MainActor final class AppDelegate: NSObject, NSApplicationDelegate {
- let model=DiagnosticModel(scanner:BluetoothScanner(),store:SelectionStore(),locker:SystemScreenLocker())
+ private let locker=SystemScreenLocker()
+ lazy var model: DiagnosticModel = {
+  let model=DiagnosticModel(scanner:BluetoothScanner(),store:SelectionStore(),locker:locker)
+  locker.onDisplaySleepResult={ [weak model] result in model?.recordDisplaySleep(result) }
+  return model
+ }()
  private var timer: Timer?
  private var observers: [NSObjectProtocol]=[]
  func applicationDidFinishLaunching(_ notification: Notification) {

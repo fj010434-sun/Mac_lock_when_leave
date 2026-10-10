@@ -24,6 +24,32 @@ import WatchSignalPlatform
 }
 
 @MainActor func registerAutomaticLockTests(_ suite: TestSuite) {
+ suite.test("Lock.testSystemSequenceLocksImmediatelyThenSleepsDisplay") {
+  var steps: [String]=[];var result: LockResult?
+  let locker=SystemScreenLocker(authorized:{true},postShortcut:{steps.append("lock")},sleepDisplay:{steps.append("sleep")})
+  locker.onDisplaySleepResult={ outcome in
+   switch outcome { case .success: result = .requested;case .failure: result = .failed }
+  }
+  try locker.lock();try check(steps == ["lock"], "lock request must be immediate; display sleep follows")
+  try await Task.sleep(for:.milliseconds(1000))
+  try check(steps == ["lock","sleep"] && result == .requested)
+ }
+ suite.test("Lock.testSystemSequenceDoesNotSleepWhenLockCannotBeRequested") {
+  for granted in [false,true] {
+   var steps: [String]=[]
+   let locker=SystemScreenLocker(authorized:{granted},postShortcut:{steps.append("lock");throw TestFailure(message:"key dispatch failed")},sleepDisplay:{steps.append("sleep")})
+   try expectThrow { try locker.lock() }
+   try await Task.sleep(for:.milliseconds(1000))
+   try check(!steps.contains("sleep"))
+  }
+ }
+ suite.test("Lock.testDisplaySleepFailureIsReportedAfterLockRequest") {
+  var steps: [String]=[];var failed=false
+  let locker=SystemScreenLocker(authorized:{true},postShortcut:{steps.append("lock")},sleepDisplay:{steps.append("sleep");throw TestFailure(message:"pmset failed")})
+  locker.onDisplaySleepResult={ if case .failure = $0 { failed=true } }
+  try locker.lock();try await Task.sleep(for:.milliseconds(1000))
+  try check(steps == ["lock","sleep"] && failed)
+ }
  suite.test("Lock.testWeakDepartureLocksInSameCallExactlyOnceAndRearmsOnReturn") {
   let locker=RecordingLocker();let (m,s)=try lockingFixture(locker)
   m.setAutomaticLock(true)
