@@ -25,6 +25,7 @@ struct DiagnosticView: View {
       }.padding(12).background(Color.orange.opacity(0.10),in:RoundedRectangle(cornerRadius:10))
      }
      targetCard
+     lockCard
      signalCard
      calibrationCard
      eventCard
@@ -72,8 +73,8 @@ struct DiagnosticView: View {
   VStack(alignment:.leading,spacing:12) {
    HStack(alignment:.top) {
     VStack(alignment:.leading,spacing:6) {
-     Text("手表信号诊断").font(.system(size:28,weight:.semibold))
-     Text("先验证信号，再决定何时锁屏").foregroundStyle(.secondary)
+     Text("手表离开锁屏").font(.system(size:28,weight:.semibold))
+     Text("只跟踪你的手表，判定离开后立即锁屏").foregroundStyle(.secondary)
     }
     Spacer()
     Button(model.requestedScanning ? "暂停扫描" : "开始扫描") {
@@ -81,12 +82,46 @@ struct DiagnosticView: View {
     }.buttonStyle(.borderedProminent).controlSize(.large)
    }
    HStack(spacing:7) {
-    Image(systemName:"testtube.2")
-    Text("诊断模式 · 不会实际锁屏")
+    Image(systemName:model.automaticLockEnabled ? "lock.shield" : "waveform.path")
+    Text(model.automaticLockEnabled ? "自动锁屏已开启" : "自动锁屏已关闭 · 仅采集信号")
     Spacer()
     Circle().fill(model.isRunning ? Color.green : Color.gray).frame(width:7,height:7)
     Text(scannerLabel)
    }.font(.caption).foregroundStyle(.secondary)
+  }
+ }
+ private var lockCard: some View {
+  card {
+   VStack(alignment:.leading,spacing:12) {
+    HStack {
+     Toggle("自动锁屏",isOn:Binding(get:{model.automaticLockEnabled},set:{model.setAutomaticLock($0)})).toggleStyle(.switch)
+      .disabled(!model.automaticLockEnabled && (!model.isRunning || model.calibration == nil || model.calibrationPhase != nil))
+     Spacer()
+     Text(model.lockAuthorized ? "锁屏权限已授权" : "需要辅助功能权限").font(.caption).foregroundStyle(model.lockAuthorized ? .green : .orange)
+    }
+    Text(protectionLabel).font(.callout).fixedSize(horizontal:false,vertical:true)
+    HStack {
+     Button("授权锁屏权限") { model.requestLockAuthorization() }
+     Button("立即锁屏（测试）") { model.lockNow() }.disabled(!model.lockAuthorized)
+    }.buttonStyle(.bordered)
+    Text("离开判定成立后直接发送系统锁屏快捷键。同一次离开只请求一次；返回不会自动解锁。")
+     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal:false,vertical:true)
+   }
+  }
+ }
+ private var protectionLabel: String {
+  if model.calibrationPhase != nil { return "正在校准，自动锁屏暂时不生效。" }
+  if model.calibration == nil { return "完成下面的两步校准，再开启自动锁屏。" }
+  if !model.automaticLockEnabled { return "校准已保存。开启自动锁屏后，请回到工位等待显示“在工位附近”。" }
+  if !model.isRunning { return "采集已暂停，自动锁屏暂时不生效。" }
+  switch model.snapshot.state {
+  case .warmingUp: return "请回到工位，等待显示“在工位附近”；当前尚未建立在场起点。"
+  case .present,.returned: return "检测已生效。带着手表离开工位可触发锁屏。"
+  case .pendingAway: return "信号变弱，正在确认离开；确认后立即锁屏。"
+  case .awayWeak,.awayMissing: return "已判定离开，锁屏请求结果见下方事件记录。"
+  case .stale: return "目标信号过期，等待新信号或失联判定。"
+  case .pendingReturn: return "信号恢复，正在确认返回工位。"
+  case .uncalibrated: return "等待有效校准。"
   }
  }
  private var targetCard: some View {
@@ -171,20 +206,27 @@ struct DiagnosticView: View {
   card {
    VStack(alignment:.leading,spacing:12) {
     HStack {
-     Text("模拟事件").font(.headline);Spacer()
-     Button("导出诊断 CSV",systemImage:"square.and.arrow.up") { export() }.disabled(model.selectedID == nil)
+     Text("锁屏记录").font(.headline);Spacer()
+     Button("导出采集 CSV",systemImage:"square.and.arrow.up") { export() }.disabled(model.selectedID == nil)
     }
-    if model.events.isEmpty { Text("尚无模拟锁屏事件。完成校准后，离开并返回几次，检查是否误判。").font(.callout).foregroundStyle(.secondary) }
-    ForEach(model.events.suffix(8).reversed()) { event in
+    if model.lockAttempts.isEmpty { Text("尚无锁屏请求。完成校准、开启自动锁屏并建立在场状态后，再测试离开。").font(.callout).foregroundStyle(.secondary) }
+    ForEach(model.lockAttempts.suffix(8).reversed()) { attempt in
      HStack {
-      Image(systemName:"lock.fill").foregroundStyle(.orange)
-      Text(event.reason == .weakSignal ? "此刻会锁屏：目标信号持续弱" : "此刻会锁屏：目标信号丢失")
-      Spacer();Text(event.timestamp,style:.time).monospacedDigit().foregroundStyle(.secondary)
+      Image(systemName:attempt.result == .requested ? "lock.fill" : "exclamationmark.triangle.fill").foregroundStyle(.orange)
+      Text(attempt.result == .requested ? "已发送锁屏请求：\(triggerLabel(attempt.trigger))" : "锁屏失败：\(attempt.detail)")
+      Spacer();Text(attempt.timestamp,style:.time).monospacedDigit().foregroundStyle(.secondary)
      }.font(.caption)
+    }
+    if !model.automaticLockEnabled && !model.events.isEmpty {
+     Text("累计离开判定 \(model.events.count) 次；自动锁屏关闭期间的判定不会补执行。")
+      .font(.caption).foregroundStyle(.secondary)
     }
     if model.droppedLogCount > 0 { Text("日志容量已满，较早的 \(model.droppedLogCount) 条记录已截断。").font(.caption).foregroundStyle(.orange) }
    }
   }
+ }
+ private func triggerLabel(_ trigger: LockTrigger) -> String {
+  switch trigger { case .manual: "手动测试";case .weakSignal: "信号持续弱";case .missingSignal: "信号丢失" }
  }
  private func card<Content:View>(@ViewBuilder _ content: () -> Content) -> some View {
   content().frame(maxWidth:.infinity,alignment:.leading).padding(18)
@@ -214,10 +256,10 @@ struct DiagnosticView: View {
   if model.selectedID == nil { return "等待选择" }
   switch model.snapshot.state {
   case .uncalibrated: return "等待校准"
-  case .warmingUp: return "等待新信号和在场起点"
+  case .warmingUp: return "请回到工位 · 尚未生效"
   case .present: return "在工位附近"
   case .pendingAway: return "信号变弱 · 正在确认"
-  case .awayWeak: return "模拟：此刻会锁屏"
+  case .awayWeak: return "已判定离开"
   case .stale: return "目标信号过期"
   case .awayMissing: return "目标信号丢失 · 可能需重新选择"
   case .pendingReturn: return "信号恢复 · 正在确认"

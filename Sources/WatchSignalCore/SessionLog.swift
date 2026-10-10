@@ -3,6 +3,7 @@ public final class SessionLog {
  private struct Row {
   let sample: SignalSample?; let snapshot: PresenceSnapshot?; let event: SimulationEvent?
   let configurationTime: Date?; let calibration: Calibration?; let version: Int
+  var lockAttempt: LockAttempt? = nil
  }
  private var rows: [Row] = []
  private let capacity: Int
@@ -23,18 +24,23 @@ public final class SessionLog {
  public func append(event: SimulationEvent) {
   append(Row(sample:nil,snapshot:nil,event:event,configurationTime:nil,calibration:currentCalibration,version:version))
  }
+ public func append(lockAttempt: LockAttempt) {
+  append(Row(sample:nil,snapshot:nil,event:nil,configurationTime:nil,calibration:currentCalibration,version:version,lockAttempt:lockAttempt))
+ }
  public func csv(deviceID: UUID, name: String, calibration: Calibration?) -> String {
   func quote(_ value: String) -> String { "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
   let format=ISO8601DateFormatter();format.formatOptions=[.withInternetDateTime,.withFractionalSeconds]
   var lines=["device_uuid,"+quote(deviceID.uuidString),"device_name,"+quote(name),"truncated,\(droppedCount)"]
   if let c=calibration { lines += ["near_median,\(c.nearMedian)","far_median,\(c.farMedian)","near_count,\(c.nearCount)","far_count,\(c.farCount)","calibrated_at,\(format.string(from:c.createdAt))","away_threshold,\(c.awayThreshold)","return_threshold,\(c.returnThreshold)"] }
-  lines.append("timestamp,device_uuid,rssi,ema,state,event_reason,calibration_version,near_median,far_median,away_threshold,return_threshold,near_count,far_count,calibrated_at")
+  lines.append("timestamp,device_uuid,rssi,ema,state,event_reason,calibration_version,near_median,far_median,away_threshold,return_threshold,near_count,far_count,calibrated_at,lock_result,detail")
   for row in rows {
    var columns: [String]
    if let s=row.sample, s.deviceID == deviceID {
     columns=[format.string(from:s.timestamp),deviceID.uuidString,String(s.rssi),row.snapshot?.ema.map(String.init(describing:)) ?? "",row.snapshot?.state.rawValue ?? "",""]
    } else if let e=row.event {
-    columns=[format.string(from:e.timestamp),deviceID.uuidString,"","","simulation",e.reason.rawValue]
+    columns=[format.string(from:e.timestamp),deviceID.uuidString,"","","departure",e.reason.rawValue]
+   } else if let attempt=row.lockAttempt {
+    columns=[format.string(from:attempt.timestamp),deviceID.uuidString,"","","lockRequest",attempt.trigger.rawValue]
    } else if let date=row.configurationTime {
     columns=[format.string(from:date),deviceID.uuidString,"","","configuration","calibrationChanged"]
    } else { continue }
@@ -42,6 +48,7 @@ public final class SessionLog {
    if let c=row.calibration {
     columns += [String(c.nearMedian),String(c.farMedian),String(c.awayThreshold),String(c.returnThreshold),String(c.nearCount),String(c.farCount),format.string(from:c.createdAt)]
    } else { columns += Array(repeating:"",count:7) }
+   columns += [row.lockAttempt?.result.rawValue ?? "",quote(row.lockAttempt?.detail ?? "")]
    lines.append(columns.joined(separator:","))
   }
   return lines.joined(separator:"\n")+"\n"

@@ -20,13 +20,19 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
  @Published public private(set) var calibrationSampleCount=0
  @Published public private(set) var nearReady=false
  @Published public private(set) var currentTime: Date
+ @Published public private(set) var automaticLockEnabled=false
+ @Published public private(set) var lockAuthorized=false
+ @Published public private(set) var lockAttempts: [LockAttempt]=[]
  public var droppedLogCount: Int { log.droppedCount }
  private let scanner: any SignalScanning, store: SelectionStore, now: () -> Date
+ private let locker: (any ScreenLocking)?
  private var detector: PresenceDetector?, collector: CalibrationCollector?
  private var calibrationStarted: Date?, sleeping=false
  private var eventCursor=0, log=SessionLog()
- public init(scanner: any SignalScanning, store: SelectionStore, now: @escaping () -> Date = Date.init) {
+ public init(scanner: any SignalScanning, store: SelectionStore, locker: (any ScreenLocking)? = nil, now: @escaping () -> Date = Date.init) {
+  self.locker=locker
   self.scanner=scanner;self.store=store;self.now=now;currentTime=now()
+  lockAuthorized=locker?.isAuthorized ?? false
   if let saved=store.load() {
    selectedID=saved.deviceID;selectedName=saved.name;calibration=saved.calibration
    detector=PresenceDetector(deviceID:saved.deviceID,calibration:saved.calibration)
@@ -37,10 +43,46 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
   scanner.onSample={ [weak self] s,n in self?.receive(s,name:n) }
   scanner.onAvailability={ [weak self] state in self?.updateAvailability(state) }
  }
+ public func setAutomaticLock(_ enabled: Bool) {
+  refreshLockAuthorization()
+  if enabled {
+   guard isRunning, selectedID != nil, calibration?.isValid == true, calibrationPhase == nil else {
+    errorMessage="请先开始扫描并完成两步校准，再启用自动锁屏。";return
+   }
+   guard lockAuthorized else { errorMessage=ScreenLockError.permissionDenied.localizedDescription;return }
+  }
+  guard automaticLockEnabled != enabled else { return }
+  automaticLockEnabled=enabled
+  // Never replay an old diagnostic event on enable. A fresh nearby target arms detection.
+  detector?.reset();eventCursor=0;snapshot=detector?.snapshot ?? PresenceSnapshot(state:.uncalibrated)
+ }
+ public func requestLockAuthorization() { locker?.requestAuthorization();refreshLockAuthorization() }
+ public func lockNow() { requestLock(trigger:.manual,at:now()) }
+ private func refreshLockAuthorization() {
+  lockAuthorized=locker?.isAuthorized ?? false
+  if automaticLockEnabled && !lockAuthorized {
+   automaticLockEnabled=false;errorMessage=ScreenLockError.permissionDenied.localizedDescription
+  }
+ }
+ private func requestLock(trigger: LockTrigger, at: Date) {
+  let attempt: LockAttempt
+  do {
+   guard let locker else { throw ScreenLockError.unavailable }
+   guard locker.isAuthorized else { throw ScreenLockError.permissionDenied }
+   try locker.lock()
+   attempt=LockAttempt(timestamp:at,trigger:trigger,result:.requested)
+  } catch {
+   attempt=LockAttempt(timestamp:at,trigger:trigger,result:.failed,detail:error.localizedDescription)
+   errorMessage="锁屏请求失败：\(error.localizedDescription)";automaticLockEnabled=false
+  }
+  lockAttempts.append(attempt);log.append(lockAttempt:attempt)
+  if lockAttempts.count > 500 { lockAttempts.removeFirst(lockAttempts.count-500) }
+ }
  public func select(deviceID: UUID, name: String) {
   selectedID=deviceID;selectedName=name.trimmingCharacters(in:.whitespacesAndNewlines).isEmpty ? "我的手表" : name
   calibration=nil;detector=PresenceDetector(deviceID:deviceID,calibration:nil)
   collector=CalibrationCollector(deviceID:deviceID); chartSamples=[];events=[];log=SessionLog();eventCursor=0
+  automaticLockEnabled=false;lockAttempts=[]
   cancelCalibration();snapshot=detector!.snapshot;log.setCalibration(nil,at:now());persist()
  }
  public func start() {
@@ -80,6 +122,7 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
  }
  public func advance(at: Date) {
   currentTime=at
+  refreshLockAuthorization()
   devices.removeAll { at.timeIntervalSince($0.lastSeen) > 120 && $0.id != selectedID }
   chartSamples.removeAll { at.timeIntervalSince($0.sample.timestamp) > 120 }
   guard isRunning, availability == .ready, !sleeping else { return }
@@ -113,8 +156,15 @@ public struct DeviceRow: Identifiable { public let id: UUID; public var name: St
  }
  private func collectEvents() {
   guard let detector else { return }
-  for event in detector.events.dropFirst(eventCursor) { events.append(event);log.append(event:event) }
+  // Advance the cursor before the OS side effect to prevent event replay.
+  let pending=Array(detector.events.dropFirst(eventCursor))
   eventCursor=detector.events.count
+  for event in pending {
+   events.append(event);log.append(event:event)
+   if automaticLockEnabled && isRunning && calibrationPhase == nil && calibration != nil {
+    requestLock(trigger:event.reason == .weakSignal ? .weakSignal : .missingSignal,at:event.timestamp)
+   }
+  }
   if events.count > 500 { events.removeFirst(events.count-500) }
  }
  private func persist() {

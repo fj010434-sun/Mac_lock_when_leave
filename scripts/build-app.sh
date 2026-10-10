@@ -14,13 +14,13 @@ cat > "$app_dir/Contents/Info.plist" <<'PLIST'
 <key>CFBundleExecutable</key><string>WatchSignal</string>
 <key>CFBundleIdentifier</key><string>local.sunyifeng.WatchSignal</string>
 <key>CFBundleName</key><string>WatchSignal</string>
-<key>CFBundleDisplayName</key><string>手表信号诊断</string>
+<key>CFBundleDisplayName</key><string>手表离开锁屏</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.1.0</string>
-<key>CFBundleVersion</key><string>1</string>
+<key>CFBundleShortVersionString</key><string>0.2.0</string>
+<key>CFBundleVersion</key><string>2</string>
 <key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>NSHighResolutionCapable</key><true/>
-<key>NSBluetoothAlwaysUsageDescription</key><string>读取你选择的蓝牙设备信号，用于验证离开工位的判断。</string>
+<key>NSBluetoothAlwaysUsageDescription</key><string>读取你选择的蓝牙设备信号，在判断离开工位时锁屏。</string>
 </dict></plist>
 PLIST
 plutil -lint "$app_dir/Contents/Info.plist"
